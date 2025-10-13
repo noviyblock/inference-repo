@@ -1,0 +1,25 @@
+FROM ros:noetic-ros-core
+
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip3 install -r requirements.txt
+
+COPY ros/ /catkin_ws/src/
+
+RUN /bin/bash -c 'source /opt/ros/noetic/setup.bash && \
+    cd /catkin_ws && \
+    catkin_make'
+
+COPY scripts/ /workspace/scripts/
+COPY config/ /workspace/config/
+
+WORKDIR /workspace
+
+CMD ["/bin/bash", "-c", "python3 scripts/download_model.py && \
+    source /catkin_ws/devel/setup.bash && \
+    roslaunch perception_node perception.launch"]

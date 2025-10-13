@@ -1,0 +1,194 @@
+name: Update Production Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_version:
+        description: 'Model version to deploy'
+        required: true
+        default: 'latest'
+      force_redeploy:
+        description: 'Force redeploy even if tests fail'
+        type: boolean
+        default: false
+  repository_dispatch:
+    types: [model_updated]
+  schedule:
+    - cron: '0 2 * * *'  # Check daily at 2 AM
+
+env:
+  MODEL_BUCKET: auto-transport-models
+  REGISTRY: cr.yandex/${{ secrets.YC_REGISTRY_ID }}
+  IMAGE_NAME: auto-transport-inference
+
+jobs:
+  check-new-model:
+    runs-on: ubuntu-latest
+    outputs:
+      new_model_available: ${{ steps.check_model.outputs.new_model_available }}
+      model_version: ${{ steps.check_model.outputs.model_version }}
+      model_path: ${{ steps.check_model.outputs.model_path }}
+
+    steps:
+    - name: Check for new models
+      id: check_model
+      run: |
+        python scripts/check_new_models.py \
+          --current-version-file models/current_version.txt \
+          --output-new-version ${{ github.event.inputs.model_version != 'latest' && github.event.inputs.model_version || 'latest' }}
+
+    - name: Output model info
+      if: steps.check_model.outputs.new_model_available == 'true'
+      run: |
+        echo "New model available: ${{ steps.check_model.outputs.model_version }}"
+        echo "Model path: ${{ steps.check_model.outputs.model_path }}"
+
+  test-model:
+    runs-on: ubuntu-latest
+    needs: check-new-model
+    if: needs.check-new-model.outputs.new_model_available == 'true'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Download model for testing
+      run: |
+        MODEL_VERSION=${{ needs.check-new-model.outputs.model_version }}
+        python scripts/download_model.py \
+          --model-version $MODEL_VERSION \
+          --output-dir ./test-model
+      env:
+        YC_SA_ACCESS_KEY: ${{ secrets.YC_SA_ACCESS_KEY_INFERENCE }}
+        YC_SA_SECRET_KEY: ${{ secrets.YC_SA_SECRET_KEY_INFERENCE }}
+
+    - name: Run model tests
+      id: model_tests
+      run: |
+        python scripts/test_model.py \
+          --model-dir ./test-model \
+          --test-data config/test_samples/
+      continue-on-error: ${{ github.event.inputs.force_redeploy == 'true' }}
+
+    - name: Model test results
+      if: always()
+      run: |
+        if [ "${{ steps.model_tests.outcome }}" == "success" ]; then
+          echo "✅ Model tests passed"
+          echo "TESTS_PASSED=true" >> $GITHUB_ENV
+        else
+          echo "❌ Model tests failed"
+          echo "TESTS_PASSED=false" >> $GITHUB_ENV
+        fi
+
+  build-new-image:
+    runs-on: ubuntu-latest
+    needs: [check-new-model, test-model]
+    if: |
+      needs.check-new-model.outputs.new_model_available == 'true' && 
+      (needs.test-model.outputs.tests_passed == 'true' || github.event.inputs.force_redeploy == 'true')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to Yandex Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: cr.yandex
+        username: json_key
+        password: ${{ secrets.YC_SA_JSON_KEY_INFERENCE }}
+
+    - name: Update model version in config
+      run: |
+        MODEL_VERSION=${{ needs.check-new-model.outputs.model_version }}
+        echo "Updating to model version: $MODEL_VERSION"
+        
+        # Update version in configuration
+        python scripts/update_model_version.py \
+          --model-version $MODEL_VERSION \
+          --config-file config/inference_config.yaml
+          
+        # Create version file
+        echo $MODEL_VERSION > models/current_version.txt
+
+    - name: Build and push new inference image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.inference
+        push: true
+        tags: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.check-new-model.outputs.model_version }}
+        build-args: |
+          MODEL_VERSION=${{ needs.check-new-model.outputs.model_version }}
+
+    - name: Update deployment configuration
+      run: |
+        MODEL_VERSION=${{ needs.check-new-model.outputs.model_version }}
+        
+        # Update docker-compose with new image tag
+        python scripts/update_deployment.py \
+          --model-version $MODEL_VERSION \
+          --image-tag $MODEL_VERSION
+          
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add docker-compose.inference.yml models/current_version.txt
+        git commit -m "Update to model version $MODEL_VERSION"
+        git push
+
+  deploy-to-staging:
+    runs-on: ubuntu-latest
+    needs: build-new-image
+    if: success()
+
+    steps:
+    - name: Deploy to staging
+      run: |
+        echo "Deploying model ${{ needs.check-new-model.outputs.model_version }} to staging"
+        # Add your staging deployment logic here
+        # For example: kubectl apply -f k8s/staging-deployment.yaml
+
+    - name: Run integration tests
+      run: |
+        echo "Running integration tests for new model"
+        # Add integration test logic
+
+  deploy-to-production:
+    runs-on: ubuntu-latest
+    needs: deploy-to-staging
+    if: |
+      success() && 
+      (github.event.inputs.promote_to_production == 'true' || 
+       github.event.repository_dispatch != '')
+
+    steps:
+    - name: Deploy to production
+      run: |
+        MODEL_VERSION=${{ needs.check-new-model.outputs.model_version }}
+        echo "🚀 Deploying model $MODEL_VERSION to production"
+        
+        # Production deployment logic
+        # kubectl apply -f k8s/production-deployment.yaml
+
+    - name: Update production status
+      run: |
+        python scripts/update_production_status.py \
+          --model-version ${{ needs.check-new-model.outputs.model_version }} \
+          --status deployed
+
+    - name: Send deployment notification
+      run: |
+        python scripts/send_notification.py \
+          --message "Model ${{ needs.check-new-model.outputs.model_version }} deployed to production" \
+          --type success

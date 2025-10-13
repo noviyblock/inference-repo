@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  inference-node:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.inference
+    image: cr.yandex/<registry-id>/auto-transport-inference:latest
+    container_name: auto-transport-inference
+    volumes:
+      - ./models:/workspace/models
+      - ./config:/workspace/config
+    environment:
+      - YC_SA_ACCESS_KEY=${YC_SA_ACCESS_KEY_INFERENCE}
+      - YC_SA_SECRET_KEY=${YC_SA_SECRET_KEY_INFERENCE}
+      - MODEL_BUCKET=auto-transport-models
+    ports:
+      - "9090:9090"
+    networks:
+      - inference-network
+    restart: unless-stopped
+
+networks:
+  inference-network:
+    driver: bridge
