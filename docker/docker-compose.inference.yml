@@ -19,7 +19,6 @@ services:
       - "9090:9090"
     networks:
       - inference-network
-    restart: unless-stopped
     working_dir: /workspace
 
 networks:
