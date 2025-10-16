@@ -1,0 +1,39 @@
+# Build artifacts
+build/
+install/
+log/
+
+# Python specific
+__pycache__/
+*.pyc
+
+# C++ specific
+*.o
+*.lo
+*.la
+*.so
+*.a
+*.cmake
+CMakeCache.txt
+CMakeFiles/
+CPackConfig.cmake
+_CPack_Packages/
+DartConfiguration.tcl
+Testing/
+Makefile
+CTestTestfile.cmake
+compile_commands.json
+
+# Eclipse specific (if applicable)
+.cproject
+.project
+.settings/
+
+# VS Code specific (if applicable)
+.vscode/
+
+# Other common files to ignore
+*.DS_Store
+*.swp
+*~
+*.bak

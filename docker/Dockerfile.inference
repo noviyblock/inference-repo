@@ -1,25 +1,39 @@
-FROM ros:noetic-ros-core
+FROM osrf/ros:humble-desktop-full
+
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    python3-pip \
-    git \
     wget \
+    curl \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip3 install -r requirements.txt
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update
 
-COPY ros/ /catkin_ws/src/
+RUN apt-get install -y \
+    ros-humble-rosbag2-storage-mcap \
+    ros-humble-tf-transformations \
+    ros-humble-vision-msgs-rviz-plugins \
+    cuda-libraries-12-3 \
+    cudnn9-cuda-12 \
+    python3-pip
 
-RUN /bin/bash -c 'source /opt/ros/noetic/setup.bash && \
-    cd /catkin_ws && \
-    catkin_make'
+RUN pip3 install \
+    onnxruntime-gpu \
+    numpy==1.23.5
 
-COPY scripts/ /workspace/scripts/
-COPY config/ /workspace/config/
+RUN apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
+RUN mkdir -p auto_drive models scene_records inference_records config
 
-CMD ["/bin/bash", "-c", "python3 scripts/download_model.py && \
-    source /catkin_ws/devel/setup.bash && \
-    roslaunch perception_node perception.launch"]
+RUN mkdir -p auto_drive models scene_records inference_records config
+
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
+ENV CUDA_HOME=/usr/local/cuda
+
+ENV DEBIAN_FRONTEND=
