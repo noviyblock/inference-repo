@@ -1,26 +1,20 @@
-version: '3.8'
-
 services:
   inference-node:
     build:
-      context: .
-      dockerfile: Dockerfile.inference 
+      context: ..
+      dockerfile: docker/Dockerfile.inference 
     container_name: auto-transport-inference
     volumes:
-      - ./auto_drive:/workspace/auto_drive:rw
-      - ./models:/workspace/models:rw
-      - ./config:/workspace/config:rw
-      - ./scene_records:/workspace/scene_records:rw
-      - ./inference_records:/workspace/inference_records:rw
+      - ../auto_drive:/workspace/auto_drive:rw
+      - ../models:/workspace/models:rw
+      - ../config:/workspace/config:rw
+      - ../scene_records:/workspace/scene_records:rw
+      - ../inference_records:/workspace/inference_records:rw
     runtime: nvidia
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-    ports:
-      - "9090:9090"
-    networks:
-      - inference-network
+    network_mode: host
+    privileged: true
+    stdin_open: true
+    tty: true
     working_dir: /workspace
-
-networks:
-  inference-network:
-    driver: bridge

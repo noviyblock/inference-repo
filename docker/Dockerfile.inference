@@ -30,10 +30,10 @@ RUN apt-get clean && \
 WORKDIR /workspace
 RUN mkdir -p auto_drive models scene_records inference_records config
 
-RUN mkdir -p auto_drive models scene_records inference_records config
-
 ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH}
 ENV CUDA_HOME=/usr/local/cuda
 
 ENV DEBIAN_FRONTEND=
+
+CMD ["tail", "-f", "/dev/null"]
