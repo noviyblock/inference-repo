@@ -29,8 +29,7 @@ def launch_setup(context, *args, **kwargs):
         # Воспроизведение инференс-записи
         ExecuteProcess(
             cmd=[
-                'ros2', 'bag', 'play', inference_bag,
-                '--clock'
+                'ros2', 'bag', 'play', inference_bag
             ],
             cwd=pkg_share,
         ),
@@ -40,14 +39,15 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'scene',
-            default_value='0103',
+            default_value='0553',
             description='Which scene bag to play'
         ),
         DeclareLaunchArgument(
             'record_name',
-            default_value='0103-record-20251016-110000',
+            default_value='0553-bevfusion_lidar_cam_s-record-20251016-212746',
             description='Which inference record to play'
         ),
 
         OpaqueFunction(function=launch_setup)
     ])
+

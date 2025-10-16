@@ -107,9 +107,9 @@ class PerceptionNode(Node):
             self.session = None
 
         for i, input_info in enumerate(self.session.get_inputs()):
-            self.get_logger().info(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
+            self.get_logger().debug(f"Input {i}: name='{input_info.name}', shape={input_info.shape}, type={input_info.type}")
         for i, output_info in enumerate(self.session.get_outputs()):
-            self.get_logger().info(f"Output {i}: name='{output_info.name}', shape={output_info.shape}, type={output_info.type}")
+            self.get_logger().debug(f"Output {i}: name='{output_info.name}', shape={output_info.shape}, type={output_info.type}")
 
         """
         # Lidar replay

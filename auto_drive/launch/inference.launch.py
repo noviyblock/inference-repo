@@ -3,6 +3,7 @@ from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch_ros.actions import Node
 from launch.substitutions import LaunchConfiguration, TextSubstitution
 from launch.actions import ExecuteProcess
+from launch.conditions import IfCondition, UnlessCondition
 
 from ament_index_python.packages import get_package_share_directory
 import os
@@ -13,13 +14,31 @@ def launch_setup(context, *args, **kwargs):
 
     # Получаем конфигурации launch
     scene = LaunchConfiguration('scene').perform(context)
-    model_path = LaunchConfiguration('model_path').perform(context)
+    model_name = LaunchConfiguration('model_name').perform(context)
+    use_cuda = LaunchConfiguration('use_cuda').perform(context)
+    
+    # Автоматически определяем путь к модели
+    model_path = os.path.join(
+        pkg_share, '..', '..', '..', '..', 'models', f'{model_name}.onnx'
+    )
+    
+    # Проверяем существование модели
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found at: {model_path}")
 
     # Пути для bag
-    play_bag_path = os.path.join(pkg_share, '..', '..', '..', '..', 'scene_records', f'NuScenes-v1.0-mini-scene-{scene}')
+    play_bag_path = os.path.join(
+        pkg_share, '..', '..', '..', '..', 'scene_records', 
+        f'NuScenes-v1.0-mini-scene-{scene}'
+    )
 
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-    record_bag_path = os.path.join(pkg_share, '..', '..', '..', '..', 'inference_records', f'{scene}-record-{timestamp}')
+    record_bag_path = os.path.join(
+        pkg_share, '..', '..', '..', '..', 'inference_records', 
+        f'{scene}-{model_name}-record-{timestamp}'
+    )
+
+    # Определяем дополнительные аргументы для ros2 bag play в зависимости от use_sim_time
 
     return [
         # Запуск perception_node
@@ -30,51 +49,47 @@ def launch_setup(context, *args, **kwargs):
             output='screen',
             parameters=[{
                 'use_sensor_time': True,
-                'onnx_path': model_path
-            }]
+                'onnx_path': model_path,
+                'use_cuda': True if use_cuda=='true' else False,
+            }],
         ),
 
         # Воспроизведение bag
         ExecuteProcess(
             cmd=[
-                'ros2', 'bag', 'play', play_bag_path,
-                '--clock'
+                'ros2', 'bag', 'play', play_bag_path, '--clock'
             ],
             cwd=pkg_share,
         ),
 
-        # Запись топика /bevfusion/detections
         ExecuteProcess(
             cmd=[
                 'ros2', 'bag', 'record',
                 '-s', 'mcap',
                 '-o', record_bag_path,
                 '/bevfusion/detections',
-                '--use-sim-time'
             ],
             cwd=pkg_share,
         )
     ]
 
 def generate_launch_description():
-    # Параметры launch
-    default_model_path = os.path.abspath(
-        os.path.join(
-            get_package_share_directory('auto_drive'),
-            '..', '..', '..', '..', 'models', 'bevfusion_lidar_cam_s.onnx'
-        )
-    )
-
     return LaunchDescription([
+        # Основные параметры
         DeclareLaunchArgument(
             'scene',
-            default_value='0103',
-            description='Which scene to play'
+            default_value='0553',
+            description='Which scene to play (e.g., 0103, 0104, etc.)'
         ),
         DeclareLaunchArgument(
-            'model_path',
-            default_value=default_model_path,
-            description='Path to the ONNX model for perception_node'
+            'model_name',
+            default_value='bevfusion_lidar_cam_s',
+            description='Name of the ONNX model without extension (e.g., bevfusion_lidar_cam_s, bevfusion_lidar_cam_m)'
+        ),
+        DeclareLaunchArgument(
+            'use_cuda',
+            default_value='false',
+            description='Whether to use CUDA for inference (true/false)'
         ),
 
         OpaqueFunction(function=launch_setup)
